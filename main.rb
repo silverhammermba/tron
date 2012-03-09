@@ -10,50 +10,24 @@ class Curses::Window
 	end
 end
 
-$hspeed = 0.05
-$vspeed = 0.10
-
 class Player
 	def initialize worm, dir, color, ch, controller = nil
 		@worm = [worm]
-		send(dir)
+		@dir = dir
 		@fail = false
 		@color = color
 		@ch = ch
 		@bind = {}
-		@last = @dir.dup
+		@last = dir.dup
 		@controller = controller
-		@time = Time.new
 	end
 
 	attr_accessor :worm, :dir, :fail, :color, :bind
 
-	def update players
-		if Time.new - @time >= @speed
-			unless check_collision
-				players.each do |player|
-					if self != player and self.next == player.next
-						explode
-						player.explode
-					end
-				end
-			end
-
-			unless @fail
-				move
-				eat_tail
-			end
-			@time = Time.new
-		end
-		return @fail
-	end
-
-
 	def eat_tail
-		if @i and (@worm.length > 10 or (@fail and @worm.length > 1))
+		if @worm.length > 10 or (@fail and @worm.length > 1)
 			Curses.stdscr.print *@worm.shift, ' '
 		end
-		@i = !@i
 	end
 
 	def print
@@ -81,31 +55,19 @@ class Player
 	end
 
 	def up
-		unless @last and @last[0] == 1
-			@dir = [-1, 0] 
-			@speed = $vspeed
-		end
+		@dir = [-1, 0] unless @last[0] == 1
 	end
 	
 	def down
-		unless @last and @last[0] == -1
-			@dir = [1, 0]
-			@speed = $vspeed
-		end
+		@dir = [1, 0] unless @last[0] == -1
 	end
 
 	def left
-		unless @last and @last[1] == 1
-			@dir = [0, -1]
-			@speed = $hspeed
-		end
+		@dir = [0, -1] unless @last[1] == 1
 	end
 
 	def right
-		unless @last and @last[1] == -1
-			@dir = [0, 1]
-			@speed = $hspeed
-		end
+		@dir = [0, 1] unless @last[1] == -1
 	end
 
 	def move
@@ -170,7 +132,7 @@ Curses.init do |scr|
 
 		# player setup
 		players = []
-		p = Player.new([scr.lines / 2, scr.columns / 2], :left, 1, ?#, controller[0])
+		p = Player.new([scr.lines / 2, scr.columns / 2], [0, -1], 1, ?#, controller[0])
 		p.bind[3] = :up
 		p.bind[2] = :left
 		p.bind[0] = :down
@@ -180,7 +142,7 @@ Curses.init do |scr|
 		p.bind[Curses::Key::DOWN]  = :down
 		p.bind[Curses::Key::RIGHT] = :right
 		players << p
-		p = Player.new([scr.lines / 2, scr.columns / 2], :right, 6, ?&, controller[1])
+		p = Player.new([scr.lines / 2, scr.columns / 2], [0, 1], 6, ?&, controller[1])
 		p.bind[3] = :up
 		p.bind[2] = :left
 		p.bind[0] = :down
@@ -191,7 +153,7 @@ Curses.init do |scr|
 		p.bind[?3] = :right
 		players << p
 		if number > 2
-		p = Player.new([scr.lines / 2, scr.columns / 2], :up, 2, ?@, controller[2])
+		p = Player.new([scr.lines / 2, scr.columns / 2], [-1, 0], 2, ?@, controller[2])
 		p.bind[3] = :up
 		p.bind[2] = :left
 		p.bind[0] = :down
@@ -202,7 +164,7 @@ Curses.init do |scr|
 		p.bind[?9] = :right
 		players << p
 		if number > 3
-		p = Player.new([scr.lines / 2, scr.columns / 2], :down, 5, ?%)
+		p = Player.new([scr.lines / 2, scr.columns / 2], [1, 0], 5, ?%)
 		p.bind[?w] = :up
 		p.bind[?a] = :left
 		p.bind[?s] = :down
@@ -236,12 +198,20 @@ Curses.init do |scr|
 		end
 
 		# update players
-		death = false
-		players.each do |player|
-			death = true if player.update(players)
-		end
+		if Time.new - time >= 0.05
+			i += 1
 
-		if death
+			# check for collisions
+			players.each do |p1|
+				unless p1.check_collision
+					players.each do |p2|
+						if p1 != p2 and p1.next == p2.next
+							p1.explode
+							p2.explode
+						end
+					end
+				end
+			end
 			living = players.reject { |player| player.fail }.length
 			if living <= 1
 				if living == 0
@@ -268,6 +238,14 @@ Curses.init do |scr|
 				end
 				restart[]
 			end
+
+			# move players
+			players.each { |player| player.move }
+
+			# remove tail
+			players.each { |player| player.eat_tail } if i % 2 == 0
+
+			time = Time.new
 		end
 	end
 end
