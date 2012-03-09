@@ -18,21 +18,24 @@ class Player
 		@color = color
 		@ch = ch
 		@bind = {}
-		@last = dir.dup
+		@last = @dir.dup
 		@controller = controller
+		@ready = false
 	end
 
-	attr_accessor :worm, :dir, :fail, :color, :bind
+	attr_accessor :worm, :dir, :fail, :color, :bind, :name
+	attr_reader :ready
 
-	def eat_tail
+	def eat_tail i
+		return if i % 2 == 1
 		if @worm.length > 10 or (@fail and @worm.length > 1)
 			Curses.stdscr.print *@worm.shift, ' '
 		end
 	end
 
-	def print
+	def print rev = true
 		return if @fail
-		Curses.stdscr.attron(Curses.color_pair(@color) | Curses::A_BOLD) do
+		Curses.stdscr.attron(Curses.color_pair(@color) | Curses::A_BOLD | (rev ? Curses::A_REVERSE : 0)) do
 			Curses.stdscr.print *@worm[-1], @ch
 		end
 		@last = @dir
@@ -45,6 +48,14 @@ class Player
 
 	def call ch
 		send(@bind[ch]) if @bind[ch]
+	end
+
+	def get_ready
+		if @controller
+			@ready = true if @controller.button == 7
+		else
+			@ready = true
+		end
 	end
 
 	def get_joystick
@@ -72,6 +83,7 @@ class Player
 
 	def move
 		return if @fail
+		print false
 		@worm << self.next
 		print
 	end
@@ -117,9 +129,13 @@ Curses.init do |scr|
 	scr.keypad = true
 
 	players = nil
-	count = Array.new(4, 0)
+	gameover = nil
+	winner = nil
+	wins = Hash.new(0)
 
 	restart = Proc.new do
+		gameover = false
+		winner = nil
 		# clear the event list from previous rounds
 		controller.each { |c| c.button }
 		scr.timeout = 0
@@ -127,8 +143,6 @@ Curses.init do |scr|
 		scr.attron(Curses.color_pair(3)) do
 			scr.box ?|, ?-
 		end
-
-		scr.print(0, 0, count.join(?,))
 
 		# player setup
 		players = []
@@ -153,30 +167,31 @@ Curses.init do |scr|
 		p.bind[?3] = :right
 		players << p
 		if number > 2
-		p = Player.new([scr.lines / 2, scr.columns / 2], [-1, 0], 2, ?@, controller[2])
-		p.bind[3] = :up
-		p.bind[2] = :left
-		p.bind[0] = :down
-		p.bind[1] = :right
-		p.bind[Curses::Key::F9] = :up
-		p.bind[?7]  = :left
-		p.bind[?8]  = :down
-		p.bind[?9] = :right
-		players << p
-		if number > 3
-		p = Player.new([scr.lines / 2, scr.columns / 2], [1, 0], 5, ?%)
-		p.bind[?w] = :up
-		p.bind[?a] = :left
-		p.bind[?s] = :down
-		p.bind[?d] = :right
-		p.bind[?t]    = :up
-		p.bind[?f]  = :left
-		p.bind[?g]  = :down
-		p.bind[?h] = :right
-		players << p
-		end
+			p = Player.new([scr.lines / 2, scr.columns / 2], [-1, 0], 2, ?@, controller[2])
+			p.bind[3] = :up
+			p.bind[2] = :left
+			p.bind[0] = :down
+			p.bind[1] = :right
+			p.bind[Curses::Key::F9] = :up
+			p.bind[?7]  = :left
+			p.bind[?8]  = :down
+			p.bind[?9] = :right
+			players << p
+			if number > 3
+				p = Player.new([scr.lines / 2, scr.columns / 2], [1, 0], 5, ?%)
+				p.bind[?w] = :up
+				p.bind[?a] = :left
+				p.bind[?s] = :down
+				p.bind[?d] = :right
+				p.bind[?t]    = :up
+				p.bind[?f]  = :left
+				p.bind[?g]  = :down
+				p.bind[?h] = :right
+				players << p
+			end
 		end
 
+		players.each_index { |i| players[i].name = "Player #{i + 1}" }
 		players.each { |player| player.print }
 	end
 
@@ -186,14 +201,32 @@ Curses.init do |scr|
 	i = 0
 	time = Time.new
 	while true
-		case ch = scr.getc
-		when 27
-			controller.each { |dev| dev.close }
-			exit
+		if gameover
+			if players.all? { |player| player.ready }
+				restart[]
+			else
+				case scr.getc
+				when 10
+					restart[]
+				when 27
+					controller.each { |dev| dev.close }
+					exit
+				else
+					players.each do |player|
+						player.get_ready
+					end
+				end
+			end
 		else
-			players.each do |player|
-				player.call ch
-				player.get_joystick
+			case ch = scr.getc
+			when 27
+				controller.each { |dev| dev.close }
+				exit
+			else
+				players.each do |player|
+					player.call ch
+					player.get_joystick
+				end
 			end
 		end
 
@@ -201,49 +234,51 @@ Curses.init do |scr|
 		if Time.new - time >= 0.05
 			i += 1
 
-			# check for collisions
-			players.each do |p1|
-				unless p1.check_collision
-					players.each do |p2|
-						if p1 != p2 and p1.next == p2.next
-							p1.explode
-							p2.explode
-						end
+			if gameover
+				players.each { |player| player.eat_tail(i) }
+
+				if winner
+					scr.attron(Curses.color_pair(winner.color)) do
+						scr.print_center(scr.lines / 2, "#{winner.name} WINS!")
 					end
-				end
-			end
-			living = players.reject { |player| player.fail }.length
-			if living <= 1
-				if living == 0
-					scr.print_center(scr.lines / 2, "DRAW")
 				else
-					players.each_with_index do |player, i|
-						unless player.fail
-							scr.attron(Curses.color_pair(player.color)) do
-								scr.print_center(scr.lines / 2, "Player #{i + 1} WINS!")
+					scr.print_center(scr.lines / 2, "DRAW")
+				end
+
+				players.each_with_index do |player, i|
+					scr.attron(player.ready ? Curses.color_pair(player.color) | Curses::A_REVERSE : 1) do
+						scr.print_center(scr.lines / 2 + 2 + i, "#{player.name}: #{wins[player.name]}")
+					end
+				end
+			else
+				# check for collisions
+				players.each do |p1|
+					unless p1.check_collision
+						players.each do |p2|
+							if p1 != p2 and p1.next == p2.next
+								p1.explode
+								p2.explode
 							end
-							count[i] += 1
 						end
 					end
 				end
-
-				while true
-					case scr.getc
-					when 10
-						break
-					when 27
-						controller.each { |dev| dev.close }
-						exit
+				living = players.reject { |player| player.fail }
+				if living.length <= 1
+					winner = living[0]
+					if winner
+						wins[winner.name] += 1
+						winner.fail = true
 					end
+					gameover = true
 				end
-				restart[]
+
+				# move players
+				players.each { |player| player.move }
+
+				# remove tail
+				players.each { |player| player.eat_tail(i) }
+
 			end
-
-			# move players
-			players.each { |player| player.move }
-
-			# remove tail
-			players.each { |player| player.eat_tail } if i % 2 == 0
 
 			time = Time.new
 		end
