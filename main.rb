@@ -157,7 +157,9 @@ Curses.init do |scr|
 
 	# player setup
 	players = []
-	p = Player.new("Player 1", [scr.lines / 2, scr.columns / 2], :left, 1, ?#, controller[0])
+	start = [scr.lines / 2, 1]
+	start = [scr.lines / 3, 1] if number >= 3
+	p = Player.new("Player 1", start, :right, 1, ?#, controller[0])
 	p.bind[3] = :up
 	p.bind[2] = :left
 	p.bind[0] = :down
@@ -167,7 +169,9 @@ Curses.init do |scr|
 	p.bind[Curses::Key::DOWN]  = :down
 	p.bind[Curses::Key::RIGHT] = :right
 	players << p
-	p = Player.new("Player 2", [scr.lines / 2, scr.columns / 2], :right, 6, ?&, controller[1])
+	start = [scr.lines / 2, scr.columns - 2]
+	start = [scr.lines / 3, scr.columns - 2] if number >= 3
+	p = Player.new("Player 2", start, :left, 6, ?&, controller[1])
 	p.bind[3] = :up
 	p.bind[2] = :left
 	p.bind[0] = :down
@@ -178,7 +182,13 @@ Curses.init do |scr|
 	p.bind[?3] = :right
 	players << p
 	if number > 2
-		p = Player.new("Player 3", [scr.lines / 2, scr.columns / 2], :up, 2, ?@, controller[2])
+		start = [scr.lines - 2, scr.columns / 2]
+		dir = :up
+		if number >= 4
+			start = [scr.lines * 2 / 3, 1] 
+			dir = :right
+		end
+		p = Player.new("Player 3", start, dir, 2, ?@, controller[2])
 		p.bind[3] = :up
 		p.bind[2] = :left
 		p.bind[0] = :down
@@ -189,7 +199,7 @@ Curses.init do |scr|
 		p.bind[?9] = :right
 		players << p
 		if number > 3
-			p = Player.new("Player 4", [scr.lines / 2, scr.columns / 2], :down, 5, ?%)
+			p = Player.new("Player 4", [scr.lines * 2 / 3, scr.columns - 2], :left, 5, ?%)
 			p.bind[?w] = :up
 			p.bind[?a] = :left
 			p.bind[?s] = :down
