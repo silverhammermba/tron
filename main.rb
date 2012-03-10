@@ -194,8 +194,8 @@ Curses.init do |scr|
 		p.bind[0] = :down
 		p.bind[1] = :right
 		p.bind[Curses::Key::F9] = :up
-		p.bind[?7]  = :left
-		p.bind[?8]  = :down
+		p.bind[?7] = :left
+		p.bind[?8] = :down
 		p.bind[?9] = :right
 		players << p
 		if number > 3
@@ -204,9 +204,9 @@ Curses.init do |scr|
 			p.bind[?a] = :left
 			p.bind[?s] = :down
 			p.bind[?d] = :right
-			p.bind[?t]    = :up
-			p.bind[?f]  = :left
-			p.bind[?g]  = :down
+			p.bind[?t] = :up
+			p.bind[?f] = :left
+			p.bind[?g] = :down
 			p.bind[?h] = :right
 			players << p
 		end
@@ -299,7 +299,7 @@ Curses.init do |scr|
 					if p1.check_collision
 						explosions << p1.explode
 					else
-						players.each do |p2|
+						players.each do |p2| # TODO smarter way to do this / only check living players
 							if p1 != p2 and p1.next == p2.next
 								explosions << p1.explode
 								explosions << p2.explode
