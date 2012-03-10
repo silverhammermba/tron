@@ -37,7 +37,7 @@ class Player
 		@last = @dir.dup
 		@fail = false
 		@ready = false
-		@controller.button if @controller
+		@controller.get_button if @controller
 	end
 
 	def eat_tail i
@@ -65,12 +65,12 @@ class Player
 	end
 
 	def get_ready
-		@ready = true if @controller and @controller.button == 7
+		@ready = true if @controller and @controller.get_button == 7
 	end
 
 	def get_joystick
 		if @controller
-			button = @controller.button
+			button = @controller.get_button
 			send(@bind[button]) if @bind[button]
 		end
 	end
