@@ -53,7 +53,7 @@ class Player
 			Curses.stdscr.print *@worm[-1], @ch
 		end
 		@last = @dir
-	end
+end
 
 	def next
 		return nil if @fail
@@ -216,8 +216,6 @@ Curses.init do |scr|
 		gameover = false
 		winner = nil
 
-		scr.timeout = 0
-
 		scr.clear
 		scr.attron(Curses.color_pair(3)) do
 			scr.box ?|, ?-
@@ -230,43 +228,48 @@ Curses.init do |scr|
 
 	restart[]
 
-	# main loop
-	i = 0
-	time = Time.new
-	while true
-		if gameover
-			if players.all? { |player| player.ready }
-				restart[]
-			else
-				case scr.getc
-				when 10
-					players.each do |player|
-						player.ready = true unless player.controller
-					end
-				when 27
-					controller.each { |dev| dev.close }
-					exit
-				else
-					players.each do |player|
-						player.get_ready
-					end
+	game = nil
+	keyboard = nil
+
+	quit = Proc.new do
+		game.exit
+		keyboard.exit
+		players.each { |player| player.controller.close }
+	end
+
+	keyboard = Thread.new do
+		while ch = scr.getc
+			case ch
+			when 10
+				if gameover
+					players.each { |player| player.ready = true unless player.controller }
 				end
-			end
-		else
-			case ch = scr.getc
 			when 27
-				controller.each { |dev| dev.close }
-				exit
+				quit[] # TODO
 			else
-				players.each do |player|
-					player.call ch
-					player.get_joystick
+				unless gameover
+					players.each { |player| player.call ch }
 				end
 			end
 		end
+	end
 
-		# update players
-		if Time.new - time >= 0.05
+	game = Thread.new do
+
+		# main loop
+		i = 0
+		while true
+			sleep 0.05
+			if gameover
+				if players.all? { |player| player.ready }
+					restart[]
+				end
+			end
+			players.each do |player|
+				player.get_joystick
+			end
+
+			# update players
 			i += 1
 
 			# remove completed explosions
@@ -288,9 +291,9 @@ Curses.init do |scr|
 					end
 				end
 
-				players.each_with_index do |player, i|
+				players.each_with_index do |player, j|
 					scr.attron(player.ready ? Curses.color_pair(player.color) | Curses::A_REVERSE : 0) do
-						scr.print_center(scr.lines / 2 + 2 + i, "#{player.name}: #{player.wins}")
+						scr.print_center(scr.lines / 2 + 2 + j, "#{player.name}: #{player.wins}")
 					end
 				end
 			else
@@ -320,8 +323,9 @@ Curses.init do |scr|
 				# move players
 				players.each { |player| player.move }
 			end
-
-			time = Time.new
+			scr.refresh
 		end
 	end
+
+	keyboard.join
 end
