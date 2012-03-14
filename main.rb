@@ -12,20 +12,20 @@ end
 
 class Player
 	def initialize name, worm, dir, color, ch, controller = nil
-		@name = name
-		@worm = [worm]
+		@name = name # player name displayed on gameover screen
+		@worm = [worm] # snake positions
 		@last = []
-		send(dir)
-		@sworm = @worm.dup
-		@sdir = @dir.dup
-		@last = @dir.dup
-		@fail = false
-		@color = color
-		@ch = ch
-		@bind = {}
-		@controller = controller
-		@ready = false
-		@wins = 0
+		send(dir) # set the initial direction
+		@sworm = @worm.dup # starting position for restarting
+		@sdir = @dir.dup # starting direction for restarting
+		@last = @dir.dup # previous direction, for preventing illegal moves
+		@fail = false # if the player has crashed
+		@color = color # Curses color pair number
+		@ch = ch # character that the worm is made of
+		@bind = {} # key bindings
+		@controller = controller # joystick
+		@ready = false # ready state for restarting
+		@wins = 0 # score
 	end
 
 	attr_accessor :fail, :color, :bind, :ready, :wins
@@ -37,7 +37,6 @@ class Player
 		@last = @dir.dup
 		@fail = false
 		@ready = false
-		@controller.get_button if @controller
 	end
 
 	def eat_tail i
@@ -53,7 +52,7 @@ class Player
 			Curses.stdscr.print *@worm[-1], @ch
 		end
 		@last = @dir
-end
+	end
 
 	def next
 		return nil if @fail
@@ -64,14 +63,19 @@ end
 		send(@bind[ch]) if @bind[ch]
 	end
 
-	def get_ready
-		@ready = true if @controller and @controller.get_button == 7
-	end
-
-	def get_joystick
-		if @controller
-			button = @controller.get_button
-			send(@bind[button]) if @bind[button]
+	def joy
+		# deadzone
+		if @controller.axis[0] and @controller.axis[1] and @controller.axis[0] ** 2 + @controller.axis[1] ** 2 > 169000000
+			case Math.atan2(@controller.axis[1], @controller.axis[0])
+			when (-Math::PI/4)..(Math::PI/4)
+				right
+			when (Math::PI/4)..(Math::PI*3/4)
+				down
+			when (-Math::PI*3/4)..(-Math::PI/4)
+				up
+			else
+				left
+			end
 		end
 	end
 
@@ -132,7 +136,7 @@ end
 
 number = ARGV.shift.to_i
 
-controller = Dir.entries('/dev/input').reject { |dev| dev !~ /^js/ }.map { |dev| Xbox360Controller.new("/dev/input/" + dev) }
+con = Dir.entries('/dev/input').reject { |dev| dev !~ /^js/ }.map { |dev| Xbox360Controller.new("/dev/input/" + dev) }
 
 Curses.init do |scr|
 	Curses.ESCDELAY = 0
@@ -159,7 +163,7 @@ Curses.init do |scr|
 	players = []
 	start = [scr.lines / 2, 1]
 	start = [scr.lines / 3, 1] if number >= 3
-	p = Player.new("Player 1", start, :right, 1, ?#, controller[0])
+	p = Player.new("Player 1", start, :right, 1, ?#, con[0])
 	p.bind[3] = :up
 	p.bind[2] = :left
 	p.bind[0] = :down
@@ -171,7 +175,7 @@ Curses.init do |scr|
 	players << p
 	start = [scr.lines / 2, scr.columns - 2]
 	start = [scr.lines / 3, scr.columns - 2] if number >= 3
-	p = Player.new("Player 2", start, :left, 6, ?&, controller[1])
+	p = Player.new("Player 2", start, :left, 6, ?&, con[1])
 	p.bind[3] = :up
 	p.bind[2] = :left
 	p.bind[0] = :down
@@ -188,7 +192,7 @@ Curses.init do |scr|
 			start = [scr.lines * 2 / 3, 1] 
 			dir = :right
 		end
-		p = Player.new("Player 3", start, dir, 2, ?@, controller[2])
+		p = Player.new("Player 3", start, dir, 2, ?@, con[2])
 		p.bind[3] = :up
 		p.bind[2] = :left
 		p.bind[0] = :down
@@ -228,15 +232,41 @@ Curses.init do |scr|
 
 	restart[]
 
+	gameover = true
+
+	# declare threads for the quit Proc
 	game = nil
 	keyboard = nil
+	controllers = []
 
 	quit = Proc.new do
+		# close all threads
 		game.exit
 		keyboard.exit
+		controllers.each { |controller| controller.exit }
+		# close joystick devices
 		players.each { |player| player.controller.close }
 	end
 
+	players.each do |player|
+		if player.controller
+			controllers << Thread.new(player) do |p|
+				Curses.stdscr.print(1, 0, p)
+				Curses.stdscr.print(2, 0, p.controller)
+				while e = p.controller.event(false)
+					if gameover
+						p.ready = true if e.type == :button and e.number == 7 and e.value == 1
+					else
+						p.joy if e.type == :axis and e.number <= 1
+					end
+				end
+				Curses.stdscr.print_right(0, e.inspect)
+				Curses.stdscr.refresh
+			end
+		end
+	end
+
+	# keyboard input control
 	keyboard = Thread.new do
 		while ch = scr.getc
 			case ch
@@ -245,10 +275,10 @@ Curses.init do |scr|
 					players.each { |player| player.ready = true unless player.controller }
 				end
 			when 27
-				quit[] # TODO
+				quit[]
 			else
 				unless gameover
-					players.each { |player| player.call ch }
+					players.each { |player| player.call ch unless player.controller }
 				end
 			end
 		end
@@ -260,14 +290,15 @@ Curses.init do |scr|
 		i = 0
 		while true
 			sleep 0.05
+			scr.print(0, 0, controllers)
 			if gameover
 				if players.all? { |player| player.ready }
 					restart[]
 				end
 			end
-			players.each do |player|
-				player.get_joystick
-			end
+			#players.each do |player|
+			#	player.get_joystick
+			#end
 
 			# update players
 			i += 1
@@ -327,5 +358,6 @@ Curses.init do |scr|
 		end
 	end
 
+	controllers.each { |controller| controller.join }
 	keyboard.join
 end
