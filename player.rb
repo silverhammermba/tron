@@ -1,10 +1,10 @@
 #!/usr/bin/env ruby
 
 class Player
-	def initialize name, character, color_number, start_pos, direction, controller
+	def initialize name, character, color, start_pos, direction, controller
 		@name = name # player name displayed on gameover screen
 		@ch = character # character that the worm is made of
-		@color = color_number # Curses color pair number
+		@color = color # Curses color pair
 		@start_pos = start_pos # starting position
 		@start_dir = direction # starting direction (method)
 		@ctrl = controller # Xbox controller
@@ -12,6 +12,9 @@ class Player
 		@bind = {} # key binding hash
 		reset
 	end
+
+	attr_accessor :crashed, :ready, :score
+	attr_reader :name, :color
 
 	def reset
 		@pos = [@start_pos] # reset start position
@@ -33,7 +36,7 @@ class Player
 
 	def print head = false
 		# print a section of the snake
-		Curses.stdscr.attron((head ? 0 : Curses.color_pair(@color)) | Curses::A_BOLD) do
+		Curses.stdscr.attron((head ? 0 : @color) | Curses::A_BOLD) do
 			Curses.stdscr.print *@pos[-1], @ch
 		end
 		@last = @dir # a new segment has been drawn, so start accepting new directions
@@ -50,18 +53,18 @@ class Player
 	end
 
 	def joystick
-		# deadzone
-		if @ctrl.axis[0] and @ctrl.axis[1] and @ctrl.axis[0] ** 2 + @ctrl.axis[1] ** 2 > 169000000
-			case Math.atan2(@ctrl.axis[1], @ctrl.axis[0])
-			when (-Math::PI/4)..(Math::PI/4)
-				right
-			when (Math::PI/4)..(Math::PI*3/4)
-				down
-			when (-Math::PI*3/4)..(-Math::PI/4)
-				up
-			else
-				left
-			end
+		# for D-pad
+		case @ctrl.axis[6]
+		when -32767
+			left
+		when 32767
+			right
+		end
+		case @ctrl.axis[7]
+		when -32767
+			up
+		when 32767
+			down
 		end
 	end
 
@@ -85,16 +88,20 @@ class Player
 	def move
 		# move the worm forward
 		unless @crashed
-			print
-			@pos << self.next
-			print true
+			if can_move?
+				print
+				@pos << self.next
+				print true
+			else
+				explode
+			end
 		end
 		eat_tail
 	end
 
 	def explode
 		@crashed = true
-		#return Explosion.new @worm[-1]
+		# TODO explosions!!!
 	end
 
 	def can_move?
