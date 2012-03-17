@@ -1,16 +1,22 @@
 #!/usr/bin/env ruby
 
 require 'curses'
-require 'xbox'
+require 'joystick'
 require './player'
 
 # variables for program state
 num_players = ARGV.shift.to_i
+
+if num_players <= 0
+	STDERR.puts "usage: #{$0} PLAYERS"
+	exit
+end
+
 paused = true
 winner = false # TODO hack so the beginning isn't a 'DRAW'
 
 # find all joysticks
-con = Dir.entries('/dev/input').reject { |dev| dev !~ /^js/ }.map { |dev| Xbox360Controller.new("/dev/input/" + dev) }
+con = Dir.entries('/dev/input').reject { |dev| dev !~ /^js/ }.map { |dev| Joystick::Device.new("/dev/input/" + dev) }
 
 # we need the stdscreen to set player positions
 stdscr = Curses.init
@@ -41,7 +47,7 @@ if num_players > 1
 	player[1] = Player.new("Player 2", ?@, Curses.color_pair(2), [stdscr.lines / 2, stdscr.columns - 2], :left, con[1])
 end
 if num_players > 2
-	#player[2] = Player.new("Player 3", ?%, 2, :right, con[2])
+	player[2] = Player.new("Player 3", ?%, Curses.color_pair(3), [stdscr.lines - 2, stdscr.columns / 2], :up, con[2])
 end
 if num_players > 3
 	#player[3] = Player.new("Player 4", ?&, 3, :right, con[3])
@@ -71,6 +77,24 @@ player.each { |p| p.crashed = true } # TODO hacky way of stopping players from m
 
 # game logic here
 game = Thread.new do
+	until player.all? { |p| p.ready }
+		sleep 0.5
+
+		stdscr.pos = (stdscr.lines / 2 + 1), 0
+		stdscr.clrtoeol
+		player.each_with_index do |p, i|
+			stdscr.attron((p == winner ? Curses::A_REVERSE : 0) | p.color) do
+				stdscr.print(stdscr.lines / 2, (stdscr.columns - p.name.length) * (i + 1) / (num_players + 1), p.name)
+			end
+			stdscr.attron((p.ready ? Curses::A_REVERSE | p.color : Curses.color_pair(0)) | Curses::A_BOLD) do
+				stdscr.print(stdscr.lines / 2 + 1, (stdscr.columns - (p.ready ? 6 : 11)) * (i + 1) / (num_players + 1), p.ready ? "READY" : "PRESS START")
+			end
+		end
+
+		stdscr.refresh
+
+	end
+
 	while true
 		sleep 0.05
 
