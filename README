@@ -1,2 +1,9 @@
-A 2-4 player terminal game similar to the Tron light cycle game. Has support
-for Xbox 360 controllers (using my Ruby joystick extension) or keyboard.
+This is a 2-4 player game inspired by the light cycle battles in TRON, played in
+a terminal.
+
+Aside from being a fun multiplayer game, this servers as a testing bed for two
+Ruby modules I am working on: a replacement for the Curses module in Ruby's
+standard library, and my rewrite of Claudio Fiorini's RJoystick gem.
+
+Due to its module dependencies, the game only works on Linux. I have no plans
+for other platforms at the moment.
