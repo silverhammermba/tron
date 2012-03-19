@@ -1,5 +1,13 @@
 #!/usr/bin/env ruby
 
+class Curses::Window
+	def safe_print y, x, str
+		if (0...lines) === y and (0...columns) === x
+			print y, x, str
+		end
+	end
+end
+
 class Player
 	def initialize name, character, color, start_pos, direction, controller
 		@name = name # player name displayed on gameover screen
@@ -13,8 +21,8 @@ class Player
 		reset
 	end
 
-	attr_accessor :crashed, :ready, :score
-	attr_reader :name, :color
+	attr_accessor :crashed, :ready, :score, :bind
+	attr_reader :name, :color, :ctrl
 
 	def reset
 		@pos = [@start_pos] # reset start position
@@ -87,6 +95,7 @@ class Player
 
 	def move
 		# move the worm forward
+		eat_tail
 		unless @crashed
 			if can_move?
 				print
@@ -96,12 +105,11 @@ class Player
 				explode
 			end
 		end
-		eat_tail
 	end
 
 	def explode
 		@crashed = true
-		# TODO explosions!!!
+		Explosion.new(self.next, @dir)
 	end
 
 	def can_move?
@@ -109,3 +117,63 @@ class Player
 	end
 end
 
+class Explosion
+	def initialize pos, dir
+		@pos = pos
+		@dir = dir
+		@debris = []
+		# debris store [position, lifetime, character they overlap]
+		# TODO perhaps they should be their own class
+		(5 + rand(6)).times do
+			@debris << Debris.new(self)
+		end
+		@done = false
+	end
+
+	attr_reader :done, :pos, :dir
+
+	def animate
+		@done = true
+		@debris.each do |d|
+			if d.moving?
+				d.move
+				@done = false
+			end
+		end
+		@debris.each do |d|
+			if d.moving?
+				d.print
+			end
+		end
+	end
+end
+
+class Debris
+	def initialize explosion
+		@explosion = explosion
+		@pos = explosion.pos.dup
+		@lifetime = rand(5)
+		@ch = Curses.stdscr[*@pos].chr
+	end
+
+	def moving?
+		@lifetime > 0
+	end
+
+	def move
+		Curses.stdscr.safe_print(*@pos, @ch)
+		if @explosion.dir[0] == 0 # horiztonal
+			@pos[0] += rand(3) - 1
+			@pos[1] += @explosion.dir[1] * (rand(5) - 1) / 2
+		else # vertical
+			@pos[0] += @explosion.dir[0] * (rand(5) - 1) / 2
+			@pos[1] += rand(3) - 1
+		end
+		@ch = Curses.stdscr[*@pos].chr
+	end
+
+	def print
+		@lifetime -= 1
+		Curses.stdscr.safe_print(*@pos, (33 + rand(94)).chr)
+	end
+end
